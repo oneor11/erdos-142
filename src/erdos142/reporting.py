@@ -1,6 +1,10 @@
 """Console reports for search, cache, and depth statistics."""
 
 import os
+from contextlib import redirect_stdout
+from datetime import datetime
+from io import StringIO
+from pathlib import Path
 
 from erdos142.kap import kap_cache
 
@@ -11,6 +15,83 @@ try:
 except ImportError:
     process = None
     PSUTIL_AVAILABLE = False
+
+
+class RunOutput:
+    """Write one experiment's reports after each completed N."""
+
+    def __init__(self, k, output_dir=None):
+        if output_dir is None:
+            output_dir = Path(__file__).resolve().parents[2] / "output"
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
+        for suffix in range(1000):
+            name = f"run {stamp}" if suffix == 0 else f"run {stamp}_{suffix}"
+            self.run_dir = output_dir / name
+            try:
+                self.run_dir.mkdir()
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise FileExistsError("Could not create a unique run directory")
+
+        self.k = k
+        self.points = []
+        self.compact = (self.run_dir / "results_compact.txt").open("w", encoding="utf-8")
+        self.verbose = (self.run_dir / "results_verbose.txt").open("w", encoding="utf-8")
+        self.desmos = (self.run_dir / "results_desmos.txt").open("w", encoding="utf-8")
+        self._write(self.compact, f"N | r_{k}(N)\n")
+        self._write(self.desmos, "[]\n")
+
+    @staticmethod
+    def _write(file, content):
+        file.write(content)
+        file.flush()
+        os.fsync(file.fileno())
+
+    def _add_point(self, n, value):
+        self.points.append((n, value))
+        self._write(self.compact, f"{n} | {value}\n")
+        points = ", ".join(f"({x},{y})" for x, y in self.points)
+        self.desmos.seek(0)
+        self.desmos.truncate()
+        self._write(self.desmos, f"[{points}]\n")
+
+    def _show_and_save(self, content):
+        print(content, end="")
+        self._write(self.verbose, content)
+
+    def start(self, n_start, max_size):
+        self._show_and_save(f"N = {n_start}, r_{self.k}({n_start}) = {max_size}\n" + "=" * 130 + "\n")
+        self._add_point(n_start, max_size)
+
+    def add_result(self, n, value, previous_max, candidate, stats, cache_stats, depth_stats):
+        report = StringIO()
+        with redirect_stdout(report):
+            print_result(n, value, stats)
+            print_cache_summary(cache_stats)
+            print_depth_stats(n, previous_max + 1, depth_stats)
+            if candidate is not None:
+                print()
+                print(f"Candidate: {candidate}")
+            print()
+            print("=" * 130)
+        self._show_and_save(report.getvalue())
+        self._add_point(n, value)
+
+    def close(self):
+        self.compact.close()
+        self.verbose.close()
+        self.desmos.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
 def print_result(
     N,
