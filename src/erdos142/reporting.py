@@ -20,7 +20,7 @@ except ImportError:
 class RunOutput:
     """Write one experiment's reports after each completed N."""
 
-    def __init__(self, k, output_dir=None):
+    def __init__(self, k, output_dir=None, branch_ordering="natural"):
         if output_dir is None:
             output_dir = Path(__file__).resolve().parents[2] / "output"
         output_dir = Path(output_dir)
@@ -39,6 +39,7 @@ class RunOutput:
             raise FileExistsError("Could not create a unique run directory")
 
         self.k = k
+        self.branch_ordering = branch_ordering
         self.points = []
         self.compact = (self.run_dir / "results_compact.txt").open("w", encoding="utf-8")
         self.verbose = (self.run_dir / "results_verbose.txt").open("w", encoding="utf-8")
@@ -65,7 +66,11 @@ class RunOutput:
         self._write(self.verbose, content)
 
     def start(self, n_start, max_size):
-        self._show_and_save(f"N = {n_start}, r_{self.k}({n_start}) = {max_size}\n" + "=" * 130 + "\n")
+        self._show_and_save(
+            f"N = {n_start}, r_{self.k}({n_start}) = {max_size}\n"
+            f"Branch ordering: {self.branch_ordering}\n"
+            + "=" * 130 + "\n"
+        )
         self._add_point(n_start, max_size)
 
     def add_result(self, n, value, previous_max, candidate, stats, cache_stats, depth_stats):
@@ -101,6 +106,7 @@ def print_result(
 
     print()
     print(f"RESULT FOR N = {N}")
+    print(f"Branch ordering: {stats.get('branch_ordering', 'natural')}")
     print()
 
     header = (
