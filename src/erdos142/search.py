@@ -27,7 +27,8 @@ def generate_AP_free_candidates(
     k: int,
     stats: dict,
     cache_stats: dict,
-    depth_stats
+    depth_stats,
+    branch_ordering: str = "natural",
 ):
     """
     Generate AP-free subsets of S having exactly 'size'
@@ -37,7 +38,14 @@ def generate_AP_free_candidates(
       1. Adding x immediately creates a k-AP.
       2. Look-ahead shows that too few future values remain
          individually eligible to reach the target size.
+
+    Natural ordering stops the look-ahead count once feasibility is known.
+    Least-constrained ordering counts all eligible future values and visits
+    surviving siblings from highest count to lowest (ties keep S order).
     """
+
+    if branch_ordering not in ("natural", "least_constrained"):
+        raise ValueError(f"Unknown branch ordering: {branch_ordering}")
 
     S = list(S)
 
@@ -72,6 +80,8 @@ def generate_AP_free_candidates(
         # ----------------------------------------------------
         # TRY EACH POSSIBLE NEXT VALUE
         # ----------------------------------------------------
+
+        surviving_branches = [] if branch_ordering == "least_constrained" else None
 
         for i in range(start, len(S)):
 
@@ -118,7 +128,7 @@ def generate_AP_free_candidates(
             # LOOK-AHEAD PRUNING
             # ------------------------------------------------
 
-            if needed_after_x > 0:
+            if needed_after_x > 0 or branch_ordering == "least_constrained":
 
                 for j in range(
                     i + 1,
@@ -142,8 +152,8 @@ def generate_AP_free_candidates(
                         # We only need to know whether
                         # enough eligible values exist.
                         if (
-                            eligible_after_x
-                            >= needed_after_x
+                            branch_ordering == "natural"
+                            and eligible_after_x >= needed_after_x
                         ):
                             break
 
@@ -168,6 +178,10 @@ def generate_AP_free_candidates(
             stats["choices_survived"] += 1
             depth_stats[depth]["choices_survived"] += 1
 
+            if surviving_branches is not None:
+                surviving_branches.append((x, i, test_mask, eligible_after_x))
+                continue
+
             current.append(x)
 
             yield from backtrack(
@@ -177,6 +191,14 @@ def generate_AP_free_candidates(
             )
 
             current.pop()
+
+        if surviving_branches is not None:
+            # Python's stable sort preserves original index order for ties.
+            surviving_branches.sort(key=lambda branch: branch[3], reverse=True)
+            for x, i, test_mask, eligible_after_x in surviving_branches:
+                current.append(x)
+                yield from backtrack(i + 1, current, test_mask)
+                current.pop()
 
     yield from backtrack(
         0,
@@ -189,7 +211,8 @@ def generate_AP_free_candidates(
 def r(
     N: int,
     k: int,
-    previous_max: int
+    previous_max: int,
+    branch_ordering: str = "natural",
 ):
     """
     Given r_k(N-1) = previous_max, test whether r_k(N)
@@ -199,9 +222,12 @@ def r(
     the maximum AP-free subset size by at most one:
 
         r_k(N) ∈ {previous_max, previous_max + 1}
+
+    branch_ordering is "natural" or "least_constrained".
     """
 
     stats = {
+        "branch_ordering": branch_ordering,
         "nodes": 0,
         "choices_tried": 0,
         "ap_prunes": 0,
@@ -241,7 +267,8 @@ def r(
         k,
         stats,
         cache_stats,
-        depth_stats
+        depth_stats,
+        branch_ordering,
     ):
 
         stats["elapsed_seconds"] = (

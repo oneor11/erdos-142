@@ -39,12 +39,13 @@ class RunOutputTests(unittest.TestCase):
                         console.getvalue(),
                     )
                     self.assertIn("RESULT FOR N = 6", console.getvalue())
+                    self.assertIn("Branch ordering: natural", console.getvalue())
 
     def test_interruption_keeps_completed_results(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temporary_dir:
             with contextlib.redirect_stdout(io.StringIO()):
                 with self.assertRaises(KeyboardInterrupt):
-                    with RunOutput(4, temporary_dir) as output:
+                    with RunOutput(4, temporary_dir, branch_ordering="least_constrained") as output:
                         output.start(5, 4)
                         run_dir = output.run_dir
                         raise KeyboardInterrupt
@@ -55,6 +56,10 @@ class RunOutputTests(unittest.TestCase):
             self.assertEqual(
                 (run_dir / "results_compact.txt").read_text(encoding="utf-8"),
                 "N | r_4(N)\n5 | 4\n",
+            )
+            self.assertIn(
+                "Branch ordering: least_constrained",
+                (run_dir / "results_verbose.txt").read_text(encoding="utf-8"),
             )
 
 
